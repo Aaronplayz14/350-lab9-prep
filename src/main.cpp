@@ -89,6 +89,10 @@ int main() {
 
     Player player;
 
+    bool leftPressed = false;
+    bool rightPressed = false;
+    bool jumpPressed = false;
+
     sf::View worldView = window.getView();
     sf::View guiView = window.getView();
     Camera camera(sf::Vector2f(window.getSize()), {WINDOW_WIDTH * 0.5f, WINDOW_HEIGHT * 0.5f});
@@ -100,20 +104,36 @@ int main() {
             } else if (auto keyPressed = event->getIf<sf::Event::KeyPressed>()) {
                 if (keyPressed->scancode == sf::Keyboard::Scan::Q) {
                     return 0;
+                } else if (keyPressed->scancode == sf::Keyboard::Scan::A) {
+                    leftPressed = true;
+                } else if (keyPressed->scancode == sf::Keyboard::Scan::D) {
+                    rightPressed = true;
+                } else if (keyPressed->scancode == sf::Keyboard::Scan::Space) {
+                    jumpPressed = true;
                 }
+            } else if (auto keyReleased = event->getIf<sf::Event::KeyReleased>()) {
+                if (keyReleased->scancode == sf::Keyboard::Scan::A) {
+                    leftPressed = false;
+                } else if (keyReleased->scancode == sf::Keyboard::Scan::D) {
+                    rightPressed = false;
+                } else if (keyReleased->scancode == sf::Keyboard::Scan::Space) {
+                    jumpPressed = false;
+                }
+            } else if (event->is<sf::Event::FocusLost>()) {
+                leftPressed = rightPressed = jumpPressed = false;
             }
         }
 
         float ax = 0;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::D)) {
+        if (rightPressed) {
             ax += PLAYER_SPEED;
         }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::A)) {
+        if (leftPressed) {
             ax -= PLAYER_SPEED;
         }
         player.velocity.x = ax;
         if ((player.position.y >= WINDOW_HEIGHT - FLOOR_HEIGHT)) {
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Space)) {
+            if (jumpPressed) {
                 player.velocity.y += JUMP_SPEED;
             }
         } else {
@@ -122,23 +142,22 @@ int main() {
         player.update();
         // camera
 
-        // TODO: Remove this line and replace it with code that determines if the player's (center)
-        // is between the two green lines (open space), in the soft exclusion zones (between the
-        // green and red lines), or in the hard exclusion zones (beyond either of the red lines).
-        //
-        // If the player is in the open zone, the camera does not need to move.
-        //
-        // If the player is in the soft exclusion zones, the camera should softly translate over
-        // multiple frames (via an exponential moving average) until the player's center is aligned
-        // with the violated soft boundary. Use SOFT_CAMERA_ALPHA for the alpha value.
-        //
-        // If the player is in the hard exclusion zones, the camera should hard-adjust so that
-        // the player's center is always kept at most *at* the red lines. This means that the
-        // player center must NEVER pass the red lines.
-        //
-        // Use SOFT_LIMIT_PERCENT and HARD_LIMIT_PERCENT to parameterize the green and red
-        // line positions.
-        camera.setCameraCenter({player.position.x, WINDOW_HEIGHT * 0.5f});
+        const sf::Vector2f playerWindow = camera.worldToWindow(player.position);
+
+        const float leftGreen = WINDOW_WIDTH * SOFT_LIMIT_PERCENT;
+        const float rightGreen = WINDOW_WIDTH * (1.f - SOFT_LIMIT_PERCENT);
+
+        const float leftRed = WINDOW_WIDTH * HARD_LIMIT_PERCENT;
+        const float rightRed = WINDOW_WIDTH * (1.f - HARD_LIMIT_PERCENT);
+
+        if (playerWindow.x < leftRed) {
+            camera.setCamera(player.position, {leftRed, playerWindow.y});
+        } else if (playerWindow.x > rightRed) {
+            camera.setCamera(player.position, {rightRed, playerWindow.y});
+        } else if (playerWindow.x < leftGreen || playerWindow.x > rightGreen) {
+            const float greenLine = playerWindow.x < leftGreen ? leftGreen : rightGreen;
+            camera.translateWindow({SOFT_CAMERA_ALPHA * (playerWindow.x - greenLine), 0.f});
+        }
 
         worldView.setCenter(camera.getCameraCenter());
         window.clear(sf::Color::Black);
